@@ -250,7 +250,7 @@ func init() {
 }
 
 // Only for a newboard. else performance will be impacted
-func (b *Board) ComputeHash() uint64 {
+func (b *Board) ComputeHash() {
 	var hash uint64
 
 	for piece := Pawn; piece <= King; piece++ {
@@ -283,7 +283,7 @@ func (b *Board) ComputeHash() uint64 {
 		}
 	}
 
-	return hash
+	b.Hash = hash
 }
 
 func (b *Board) hasLegalEnPassantCapture() bool {

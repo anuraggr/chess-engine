@@ -110,7 +110,8 @@ type Board struct {
 	HalfMoveClock   int
 	FullMoveNumber  int
 	Hash            uint64
-	History         []uint64
+	History         [101]uint64
+	HistoryLength   int
 }
 
 // bit manipulation helpers
@@ -397,11 +398,5 @@ func (b *Board) String() string {
 
 func (b *Board) Copy() *Board {
 	nb := *b
-
-	if b.History != nil {
-		nb.History = make([]uint64, len(b.History))
-		copy(nb.History, b.History)
-	}
-
 	return &nb
 }

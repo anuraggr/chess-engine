@@ -161,7 +161,7 @@ func negamax(b *Board, depth, alpha, beta int, si *SearchInfo) int {
 		return 0
 	}
 
-	if b.HalfMoveClock >= 100 || isInsufficientMaterial(b) {
+	if b.HalfMoveClock >= 100 || isInsufficientMaterial(b) || isRepetition(b) {
 		return 0
 	}
 

@@ -477,6 +477,11 @@ func GenerateLegalMoves(b *Board) []Move {
 func MakeMove(b *Board, m Move) *Board {
 	nb := b.Copy()
 
+	nb.Hash ^= ZobristCastling[b.CastlingRights]
+	if b.hasLegalEnPassantCapture() {
+		nb.Hash ^= ZobristEnPassant[b.EnPassantSquare%8]
+	}
+
 	pieceColor := b.Turn
 	var pieceType PieceType
 	for pt := Pawn; pt <= King; pt++ {
@@ -499,28 +504,34 @@ func MakeMove(b *Board, m Move) *Board {
 	// piece from
 	ClearBit(&nb.Colors[pieceColor], m.From)
 	ClearBit(&nb.Pieces[pieceType], m.From)
+	nb.Hash ^= ZobristPieces[pieceColor][pieceType][m.From]
 
 	// captured piece
 	if capturedType != NoPieceType {
 		ClearBit(&nb.Colors[pieceColor.Other()], m.To)
 		ClearBit(&nb.Pieces[capturedType], m.To)
+		nb.Hash ^= ZobristPieces[pieceColor.Other()][capturedType][m.To]
 	}
 
 	// piece to
 	SetBit(&nb.Colors[pieceColor], m.To)
 	SetBit(&nb.Pieces[pieceType], m.To)
+	nb.Hash ^= ZobristPieces[pieceColor][pieceType][m.From]
 
 	// En Passant
 	if m.Flag == FlagEnPassant {
 		captureSq := SquareIndex(FileOf(m.To), RankOf(m.From))
 		ClearBit(&nb.Colors[pieceColor.Other()], captureSq)
 		ClearBit(&nb.Pieces[Pawn], captureSq)
+		nb.Hash ^= ZobristPieces[pieceColor.Other()][Pawn][captureSq]
 	}
 
 	// promotion
 	if m.Flag == FlagPromotion {
 		ClearBit(&nb.Pieces[Pawn], m.To)
 		SetBit(&nb.Pieces[m.Promotion], m.To)
+		nb.Hash ^= ZobristPieces[pieceColor][Pawn][m.From]      //remove promoting pawn
+		nb.Hash ^= ZobristPieces[pieceColor][m.Promotion][m.To] //add promotion piece
 	}
 
 	// castling
@@ -531,6 +542,8 @@ func MakeMove(b *Board, m Move) *Board {
 		ClearBit(&nb.Pieces[Rook], hRook)
 		SetBit(&nb.Colors[pieceColor], fRook)
 		SetBit(&nb.Pieces[Rook], fRook)
+		nb.Hash ^= ZobristPieces[pieceColor][Rook][hRook] //remove ROOk
+		nb.Hash ^= ZobristPieces[pieceColor][Rook][fRook] //add rook
 	}
 	if m.Flag == FlagCastleQueen {
 		rank := RankOf(m.From)
@@ -539,6 +552,8 @@ func MakeMove(b *Board, m Move) *Board {
 		ClearBit(&nb.Pieces[Rook], aRook)
 		SetBit(&nb.Colors[pieceColor], dRook)
 		SetBit(&nb.Pieces[Rook], dRook)
+		nb.Hash ^= ZobristPieces[pieceColor][Rook][aRook]
+		nb.Hash ^= ZobristPieces[pieceColor][Rook][dRook]
 	}
 
 	// update en passant square
@@ -578,14 +593,24 @@ func MakeMove(b *Board, m Move) *Board {
 	// update clocks
 	if pieceType == Pawn || capturedType != NoPieceType || m.Flag == FlagEnPassant {
 		nb.HalfMoveClock = 0
+		nb.HistoryLength = 0
 	} else {
 		nb.HalfMoveClock++
+		nb.History[nb.HistoryLength] = b.Hash
+		nb.HistoryLength++
 	}
 	if b.Turn == Black {
 		nb.FullMoveNumber++
 	}
 
 	nb.Turn = b.Turn.Other()
+	nb.Hash ^= ZobristTurn
+
+	nb.Hash ^= ZobristCastling[nb.CastlingRights]
+	if nb.hasLegalEnPassantCapture() {
+		nb.Hash ^= ZobristEnPassant[nb.EnPassantSquare%8]
+	}
+
 	return nb
 }
 
@@ -620,7 +645,7 @@ const (
 	Stalemate
 	FiftyMoveRule
 	InsufficientMaterial
-	// TODO: ThreefoldRepetition -> this requires zobrist hashing for lookback
+	ThreefoldRepetition
 )
 
 func (m Method) String() string {
@@ -633,8 +658,8 @@ func (m Method) String() string {
 		return "Fifty-move rule"
 	case InsufficientMaterial:
 		return "Insufficient material"
-	// case ThreefoldRepetition:
-	// 	return "Three-fold repetition"
+	case ThreefoldRepetition:
+		return "Threefold repetition"
 	default:
 		return ""
 	}
@@ -655,6 +680,10 @@ func GetOutcome(b *Board) (Outcome, Method) {
 
 	if b.HalfMoveClock >= 100 {
 		return Draw, FiftyMoveRule
+	}
+
+	if isRepetition(b) {
+		return Draw, ThreefoldRepetition
 	}
 
 	if isInsufficientMaterial(b) {
@@ -681,6 +710,21 @@ func isInsufficientMaterial(b *Board) bool {
 	if totalPieces == 1 {
 		if whiteKnights == 1 || whiteBishops == 1 || blackKnights == 1 || blackBishops == 1 {
 			return true
+		}
+	}
+
+	return false
+}
+
+func isRepetition(b *Board) bool {
+	repetitionCount := 0
+
+	for i := b.HistoryLength - 2; i >= 0; i -= 2 {
+		if b.History[i] == b.Hash {
+			repetitionCount++
+			if repetitionCount >= 3 {
+				return true
+			}
 		}
 	}
 
