@@ -249,6 +249,64 @@ func (z *Zobrist) initPolyglot() {
 	z.WhiteToMove = Random64[780]
 }
 
-// func ComputeHash(b *Board) uint64 {
+// Only for a newboard. else performance will be impacted
+func (b *Board) ComputeHash(z *Zobrist) uint64 {
+	var hash uint64
 
-// }
+	for piece := Pawn; piece <= King; piece++ {
+		for _, color := range []int{0, 1} {
+			//Bitboard of all pieces of type piece and color color
+			bb := b.Pieces[piece] & b.Colors[color]
+
+			if bb != 0 {
+				//idx of first piece (0-63) and clear it so we can
+				// move to next bit
+				sq := PopBit(&bb)
+
+				hash ^= z.Pieces[color][piece][sq]
+
+			}
+		}
+	}
+
+	if b.Turn == White {
+		//Polyglot only hashes turn when its whites turn
+		hash ^= z.WhiteToMove
+	}
+
+	hash ^= z.Castling[b.CastlingRights]
+
+	if b.EnPassantSquare != -1 {
+		if b.hasLegalEnPassantCapture() {
+			file := b.EnPassantSquare % 8
+			hash ^= z.EnPassant[file]
+		}
+	}
+
+	return hash
+}
+
+func (b *Board) hasLegalEnPassantCapture() bool {
+	if b.EnPassantSquare == -1 {
+		return false
+	}
+
+	sq := b.EnPassantSquare
+
+	epBit := uint64(1) << sq
+
+	if b.Turn == 1 {
+		blackPawns := b.Pieces[Pawn] & b.Colors[1]
+		attackers := ((epBit << 7) & 0xFEFEFEFEFEFEFEFE) | // left
+			((epBit << 9) & 0x7F7F7F7F7F7F7F7F) // right
+
+		return (attackers & blackPawns) != 0
+
+	} else {
+		whitePawns := b.Pieces[Pawn] & b.Colors[0]
+		attackers := ((epBit >> 9) & 0xFEFEFEFEFEFEFEFE) | // left
+			((epBit >> 7) & 0x7F7F7F7F7F7F7F7F) // right
+
+		return (attackers & whitePawns) != 0
+	}
+}
