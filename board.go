@@ -112,6 +112,7 @@ type Board struct {
 	Hash            uint64
 	History         [101]uint64
 	HistoryLength   int
+	TotalMaterial   int
 }
 
 // bit manipulation helpers
@@ -205,8 +206,16 @@ func NewBoard() *Board {
 	}
 
 	b.ComputeHash()
+	b.ComputeMaterial()
 
 	return b
+}
+
+func (b *Board) ComputeMaterial() {
+	b.TotalMaterial = 0
+	for pt := Knight; pt <= Queen; pt++ {
+		b.TotalMaterial += bits.OnesCount64(b.Pieces[pt]) * PieceValue[pt]
+	}
 }
 
 // FEN
@@ -291,6 +300,7 @@ func BoardFromFEN(fen string) (*Board, error) {
 	}
 
 	b.ComputeHash()
+	b.ComputeMaterial()
 
 	return b, nil
 }

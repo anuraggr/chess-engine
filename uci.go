@@ -55,6 +55,7 @@ func UCI() {
 
 		case "ucinewgame":
 			board = NewBoard()
+			TT.Clear() //clear TT from last game
 
 		case "position":
 			board = parsePosition(tokens[1:])

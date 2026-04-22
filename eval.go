@@ -112,6 +112,16 @@ var pstTable = [7]*[64]int{
 	nil,        // King is handled sepretly for mid and endgame
 }
 
+var fileMask [8]uint64
+
+func init() {
+	for f := 0; f < 8; f++ {
+		for r := 0; r < 8; r++ {
+			fileMask[f] |= 1 << SquareIndex(f, r)
+		}
+	}
+}
+
 // positive -> white advantage and vice versa
 func Evaluate(b *Board) int {
 	score := 0
@@ -152,11 +162,7 @@ func evalPST(b *Board) int {
 
 	// we need to find if we are in endgame for kings pst.
 	// endgame = nonking/nonpawn material <= 1300 (around a queen value)).
-	totalMat := 0
-	for pt := Knight; pt <= Queen; pt++ {
-		totalMat += bits.OnesCount64(b.Pieces[pt]) * PieceValue[pt]
-	}
-	isEndgame := totalMat <= 1300
+	isEndgame := b.TotalMaterial <= 1300
 
 	for pt := Pawn; pt <= Queen; pt++ {
 		tbl := pstTable[pt]
@@ -260,14 +266,6 @@ func evalPawnStructure(b *Board) int {
 	)
 
 	score := 0
-
-	// file masks for isolation
-	var fileMask [8]uint64
-	for f := 0; f < 8; f++ {
-		for r := 0; r < 8; r++ {
-			fileMask[f] |= 1 << SquareIndex(f, r)
-		}
-	}
 
 	for _, c := range []Color{White, Black} {
 		pawns := b.Pieces[Pawn] & b.Colors[c]

@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"math/bits"
 	"sync/atomic"
 	"time"
 )
 
 const (
+	MaxPly    = 100
 	MateScore = 100000
 	Infinity  = MateScore + 1
 )
@@ -20,6 +20,9 @@ type SearchInfo struct {
 	MaxDepth int           // depth limit (0 = no limit)
 	MoveTime time.Duration // time limit per move (0 = no limit)
 	Start    time.Time     // search started time
+
+	PVTable  [MaxPly][MaxPly]Move
+	PVLength [MaxPly]int
 }
 
 func (si *SearchInfo) Stopped() bool {
@@ -55,7 +58,10 @@ func init() {
 	}
 }
 
-func scoreMove(b *Board, m Move) int {
+func scoreMove(b *Board, m Move, ttMove Move) int {
+	if m == ttMove {
+		return 1000000
+	}
 	score := 0
 	if m.Flag == FlagPromotion {
 		score += 800 + PieceValue[m.Promotion]
@@ -71,11 +77,11 @@ func scoreMove(b *Board, m Move) int {
 	return score
 }
 
-func sortMoves(b *Board, moves []Move) {
+func sortMoves(b *Board, moves []Move, ttMove Move) {
 	n := len(moves)
 	scores := make([]int, n)
 	for i, m := range moves {
-		scores[i] = scoreMove(b, m)
+		scores[i] = scoreMove(b, m, ttMove)
 	}
 	for i := 1; i < n; i++ {
 		key := scores[i]
@@ -112,7 +118,7 @@ func quiescence(b *Board, alpha, beta int, si *SearchInfo) int {
 	}
 
 	moves := GenerateLegalMoves(b)
-	sortMoves(b, moves)
+	sortMoves(b, moves, Move{})
 
 	for _, m := range moves {
 		isCapture := b.PieceAt(m.To) != NoPiece || m.Flag == FlagEnPassant
@@ -140,7 +146,10 @@ func quiescence(b *Board, alpha, beta int, si *SearchInfo) int {
 }
 
 // negamax with alpha-beta pruning
-func negamax(b *Board, depth, alpha, beta int, si *SearchInfo) int {
+func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
+	if ply < MaxPly {
+		si.PVLength[ply] = ply
+	}
 	si.IncNodes()
 
 	// we check time limit every 2048 nodes
@@ -152,6 +161,27 @@ func negamax(b *Board, depth, alpha, beta int, si *SearchInfo) int {
 		return 0
 	}
 
+	if b.HalfMoveClock >= 100 || isInsufficientMaterial(b) || isRepetition(b) {
+		return 0
+	}
+
+	var ttMove Move
+	if entry, found := TT.Probe(b.Hash); found {
+		ttMove = entry.BestMove.Unpack()
+		if int(entry.Depth) >= depth {
+			score := int(entry.Score)
+			if entry.Flag == FlagExact {
+				return score
+			}
+			if entry.Flag == FlagAlpha && score <= alpha {
+				return alpha
+			}
+			if entry.Flag == FlagBeta && score >= beta {
+				return beta
+			}
+		}
+	}
+
 	legalMoves := GenerateLegalMoves(b)
 
 	if len(legalMoves) == 0 {
@@ -161,21 +191,20 @@ func negamax(b *Board, depth, alpha, beta int, si *SearchInfo) int {
 		return 0
 	}
 
-	if b.HalfMoveClock >= 100 || isInsufficientMaterial(b) || isRepetition(b) {
-		return 0
-	}
-
 	if depth <= 0 {
 		return quiescence(b, alpha, beta, si)
 	}
 
-	sortMoves(b, legalMoves)
+	sortMoves(b, legalMoves, ttMove)
 
 	bestScore := -Infinity
+	var bestMove Move
+
+	originalAlpha := alpha
 
 	for _, m := range legalMoves {
 		nb := MakeMove(b, m)
-		score := -negamax(nb, depth-1, -beta, -alpha, si)
+		score := -negamax(nb, depth-1, -beta, -alpha, ply+1, si)
 
 		if si.Stopped() {
 			return 0
@@ -183,13 +212,38 @@ func negamax(b *Board, depth, alpha, beta int, si *SearchInfo) int {
 
 		if score > bestScore {
 			bestScore = score
+			bestMove = m
 		}
 		if score > alpha {
 			alpha = score
+
+			if ply < MaxPly {
+				si.PVTable[ply][ply] = m
+				si.PVLength[ply] = ply + 1
+
+				if ply+1 < MaxPly {
+					length := si.PVLength[ply+1]
+					if length > ply+1 {
+						copy(si.PVTable[ply][ply+1:length], si.PVTable[ply+1][ply+1:length])
+					}
+					si.PVLength[ply] = length
+				}
+			}
 		}
 		if alpha >= beta {
 			break
 		}
+	}
+
+	if !si.Stopped() {
+		flag := FlagAlpha // assume we failed low
+		if bestScore >= beta {
+			flag = FlagBeta // beta cutoff (lower bound)
+		} else if bestScore > originalAlpha {
+			flag = FlagExact // we improved alpha without hitting beta
+		}
+
+		TT.Store(b.Hash, uint8(depth), int16(bestScore), flag, bestMove)
 	}
 
 	return bestScore
@@ -226,24 +280,27 @@ func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
 		beta := Infinity
 
 		legalMoves := GenerateLegalMoves(b)
-		sortMoves(b, legalMoves)
+		sortMoves(b, legalMoves, best.BestMove)
 
 		// move ordering
-		if best.Depth > 0 && best.BestMove.From != best.BestMove.To {
-			for i, m := range legalMoves {
-				if m == best.BestMove {
-					legalMoves[0], legalMoves[i] = legalMoves[i], legalMoves[0]
-					break
-				}
-			}
-		}
+		// if best.Depth > 0 && best.BestMove.From != best.BestMove.To {
+		// 	for i, m := range legalMoves {
+		// 		if m == best.BestMove {
+		// 			legalMoves[0], legalMoves[i] = legalMoves[i], legalMoves[0]
+		// 			break
+		// 		}
+		// 	}
+		// }
+		//I dont think I need all thsi
+
+		si.PVLength[0] = 0 // Initialize at start of depth
 
 		bestScore := -Infinity
 		var bestMove Move
 
 		for _, m := range legalMoves {
 			nb := MakeMove(b, m)
-			score := -negamax(nb, d-1, -beta, -alpha, si)
+			score := -negamax(nb, d-1, -beta, -alpha, 1, si)
 
 			if si.Stopped() {
 				break
@@ -255,12 +312,24 @@ func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
 			}
 			if score > alpha {
 				alpha = score
+
+				si.PVTable[0][0] = m
+				si.PVLength[0] = 1
+
+				length := si.PVLength[1]
+				if length > 1 {
+					copy(si.PVTable[0][1:length], si.PVTable[1][1:length])
+				}
+				si.PVLength[0] = length
 			}
 		}
 
 		// we only update best if we completed this depth without being stopped
 		if !si.Stopped() {
 			best = SearchResult{BestMove: bestMove, Score: bestScore, Depth: d}
+
+			//store root evaluation in TT to make it seen by ExtractPV
+			TT.Store(b.Hash, uint8(d), int16(bestScore), FlagExact, bestMove)
 
 			// prints UCI info line
 			elapsed := time.Since(si.Start)
@@ -279,8 +348,19 @@ func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
 				scoreStr = fmt.Sprintf("mate -%d", (plies+1)/2)
 			}
 
+			pvString := ""
+			for i := 0; i < si.PVLength[0]; i++ {
+				if i > 0 {
+					pvString += " "
+				}
+				pvString += si.PVTable[0][i].String()
+			}
+			if si.PVLength[0] == 0 {
+				pvString = best.BestMove.String()
+			}
+
 			fmt.Printf("info depth %d score %s nodes %d nps %d time %d pv %s\n",
-				d, scoreStr, atomic.LoadInt64(&si.Nodes), nps, elapsed.Milliseconds(), best.BestMove)
+				d, scoreStr, atomic.LoadInt64(&si.Nodes), nps, elapsed.Milliseconds(), pvString)
 
 			if isMateScore(bestScore) {
 				break
@@ -319,5 +399,8 @@ func CountMaterial(b *Board, c Color) int {
 }
 
 func Abs(x int) int {
-	return int(math.Abs(float64(x)))
+	if x < 0 {
+		return -x
+	}
+	return x
 }

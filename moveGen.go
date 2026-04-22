@@ -39,6 +39,73 @@ func (m Move) String() string {
 	return s
 }
 
+// Bits 0–5: From square (0–63)
+// Bits 6–11: To square (0–63)
+// Bits 12–15: Special (flag + promotion combined)
+// TODO: Make Unpacked usage everywhere. This is onlyused in TT right now
+type PackedMove uint16
+
+const NoPackedMove PackedMove = 0
+
+func (m Move) Pack() PackedMove {
+
+	var special uint16
+	switch m.Flag {
+	case FlagDoublePush:
+		special = 1
+	case FlagEnPassant:
+		special = 2
+	case FlagCastleKing:
+		special = 3
+	case FlagCastleQueen:
+		special = 4
+	case FlagPromotion:
+		switch m.Promotion {
+		case Knight:
+			special = 5
+		case Bishop:
+			special = 6
+		case Rook:
+			special = 7
+		case Queen:
+			special = 8
+		}
+	}
+	return PackedMove(uint16(m.From) | uint16(m.To)<<6 | special<<12)
+}
+
+func (pm PackedMove) Unpack() Move {
+
+	from := int(pm & 0x3F)
+	to := int((pm >> 6) & 0x3F)
+	special := (pm >> 12) & 0xF
+
+	m := Move{From: from, To: to}
+	switch special {
+	case 1:
+		m.Flag = FlagDoublePush
+	case 2:
+		m.Flag = FlagEnPassant
+	case 3:
+		m.Flag = FlagCastleKing
+	case 4:
+		m.Flag = FlagCastleQueen
+	case 5:
+		m.Flag = FlagPromotion
+		m.Promotion = Knight
+	case 6:
+		m.Flag = FlagPromotion
+		m.Promotion = Bishop
+	case 7:
+		m.Flag = FlagPromotion
+		m.Promotion = Rook
+	case 8:
+		m.Flag = FlagPromotion
+		m.Promotion = Queen
+	}
+	return m
+}
+
 // Precalculated Attack Tables
 var KnightAttacks [64]uint64
 var KingAttacks [64]uint64
@@ -511,6 +578,9 @@ func MakeMove(b *Board, m Move) *Board {
 		ClearBit(&nb.Colors[pieceColor.Other()], m.To)
 		ClearBit(&nb.Pieces[capturedType], m.To)
 		nb.Hash ^= ZobristPieces[pieceColor.Other()][capturedType][m.To]
+		if capturedType >= Knight && capturedType <= Queen {
+			nb.TotalMaterial -= PieceValue[capturedType]
+		}
 	}
 
 	// piece to
@@ -530,8 +600,9 @@ func MakeMove(b *Board, m Move) *Board {
 	if m.Flag == FlagPromotion {
 		ClearBit(&nb.Pieces[Pawn], m.To)
 		SetBit(&nb.Pieces[m.Promotion], m.To)
-		nb.Hash ^= ZobristPieces[pieceColor][Pawn][m.From]      //remove promoting pawn
+		nb.Hash ^= ZobristPieces[pieceColor][Pawn][m.To]        //remove promoting pawn
 		nb.Hash ^= ZobristPieces[pieceColor][m.Promotion][m.To] //add promotion piece
+		nb.TotalMaterial += PieceValue[m.Promotion]
 	}
 
 	// castling
