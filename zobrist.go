@@ -200,20 +200,20 @@ var Random64 = [781]uint64{
 	0xF8D626AAAF278509,
 }
 
-type Zobrist struct {
-	Pieces      [2][7][64]uint64
-	WhiteToMove uint64
-	Castling    [16]uint64
-	EnPassant   [8]uint64
-}
+var (
+	ZobristPieces    [2][7][64]uint64
+	ZobristTurn      uint64
+	ZobristCastling  [16]uint64
+	ZobristEnPassant [8]uint64
+)
 
-func (z *Zobrist) initPolyglot() {
+func init() {
 	idx := 0
 
 	for piece := Pawn; piece <= King; piece++ {
 		for _, color := range []int{1, 0} { // 1 = Black, 0 = White
 			for square := 0; square < 64; square++ {
-				z.Pieces[color][piece][square] = Random64[idx]
+				ZobristPieces[color][piece][square] = Random64[idx]
 				idx++
 			}
 		}
@@ -239,18 +239,18 @@ func (z *Zobrist) initPolyglot() {
 		if i&8 != 0 {
 			hash ^= blaceQueen
 		}
-		z.Castling[i] = hash
+		ZobristCastling[i] = hash
 	}
 
 	for i := 0; i < 8; i++ {
-		z.EnPassant[i] = Random64[772+i]
+		ZobristEnPassant[i] = Random64[772+i]
 	}
 
-	z.WhiteToMove = Random64[780]
+	ZobristTurn = Random64[780]
 }
 
 // Only for a newboard. else performance will be impacted
-func (b *Board) ComputeHash(z *Zobrist) uint64 {
+func (b *Board) ComputeHash() uint64 {
 	var hash uint64
 
 	for piece := Pawn; piece <= King; piece++ {
@@ -263,7 +263,7 @@ func (b *Board) ComputeHash(z *Zobrist) uint64 {
 				// move to next bit
 				sq := PopBit(&bb)
 
-				hash ^= z.Pieces[color][piece][sq]
+				hash ^= ZobristPieces[color][piece][sq]
 
 			}
 		}
@@ -271,15 +271,15 @@ func (b *Board) ComputeHash(z *Zobrist) uint64 {
 
 	if b.Turn == White {
 		//Polyglot only hashes turn when its whites turn
-		hash ^= z.WhiteToMove
+		hash ^= ZobristTurn
 	}
 
-	hash ^= z.Castling[b.CastlingRights]
+	hash ^= ZobristCastling[b.CastlingRights]
 
 	if b.EnPassantSquare != -1 {
 		if b.hasLegalEnPassantCapture() {
 			file := b.EnPassantSquare % 8
-			hash ^= z.EnPassant[file]
+			hash ^= ZobristEnPassant[file]
 		}
 	}
 
