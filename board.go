@@ -109,6 +109,8 @@ type Board struct {
 	EnPassantSquare int8 // -1 if none
 	HalfMoveClock   int
 	FullMoveNumber  int
+	Hash            uint64
+	History         []uint64
 }
 
 // bit manipulation helpers
@@ -201,6 +203,8 @@ func NewBoard() *Board {
 		b.AddPiece(SquareIndex(f, 7), NewPiece(pt, Black))
 	}
 
+	b.ComputeHash()
+
 	return b
 }
 
@@ -284,6 +288,8 @@ func BoardFromFEN(fen string) (*Board, error) {
 		}
 		b.FullMoveNumber = fmn
 	}
+
+	b.ComputeHash()
 
 	return b, nil
 }
@@ -391,5 +397,11 @@ func (b *Board) String() string {
 
 func (b *Board) Copy() *Board {
 	nb := *b
+
+	if b.History != nil {
+		nb.History = make([]uint64, len(b.History))
+		copy(nb.History, b.History)
+	}
+
 	return &nb
 }
