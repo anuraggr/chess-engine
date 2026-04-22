@@ -516,7 +516,7 @@ func MakeMove(b *Board, m Move) *Board {
 	// piece to
 	SetBit(&nb.Colors[pieceColor], m.To)
 	SetBit(&nb.Pieces[pieceType], m.To)
-	nb.Hash ^= ZobristPieces[pieceColor][pieceType][m.From]
+	nb.Hash ^= ZobristPieces[pieceColor][pieceType][m.To]
 
 	// En Passant
 	if m.Flag == FlagEnPassant {
@@ -717,7 +717,7 @@ func isInsufficientMaterial(b *Board) bool {
 }
 
 func isRepetition(b *Board) bool {
-	repetitionCount := 0
+	repetitionCount := 1
 
 	for i := b.HistoryLength - 2; i >= 0; i -= 2 {
 		if b.History[i] == b.Hash {
