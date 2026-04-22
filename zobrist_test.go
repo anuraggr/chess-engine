@@ -4,8 +4,6 @@ import (
 	"testing"
 )
 
-// TestPolyglotStartingPosition verifies that the Zobrist hash of the standard
-// starting position matches the well-known Polyglot value.
 func TestPolyglotStartingPosition(t *testing.T) {
 	b := NewBoard()
 	const expected uint64 = 0x463b96181691fc9c
@@ -13,9 +11,6 @@ func TestPolyglotStartingPosition(t *testing.T) {
 		t.Errorf("Starting position hash = 0x%016x, want 0x%016x", b.Hash, expected)
 	}
 }
-
-// TestZobristConsistency computes the hash from scratch and verifies it
-// matches b.Hash for several complex FEN positions.
 func TestZobristConsistency(t *testing.T) {
 	fens := []string{
 		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -34,7 +29,6 @@ func TestZobristConsistency(t *testing.T) {
 
 		hashFromInit := b.Hash
 
-		// Recompute the hash from scratch.
 		b.ComputeHash()
 
 		if b.Hash != hashFromInit {
@@ -44,13 +38,9 @@ func TestZobristConsistency(t *testing.T) {
 	}
 }
 
-// TestZobristIncrementalMatchesFull makes a sequence of moves from the
-// starting position and verifies that the incrementally-updated b.Hash
-// equals a full recomputation after each move.
 func TestZobristIncrementalMatchesFull(t *testing.T) {
 	b := NewBoard()
 
-	// A short opening sequence: 1. e4 e5 2. Nf3 Nc6 3. Bb5 (Ruy Lopez)
 	moves := []string{"e2e4", "e7e5", "g1f3", "b8c6", "f1b5"}
 
 	for _, ms := range moves {
@@ -63,7 +53,6 @@ func TestZobristIncrementalMatchesFull(t *testing.T) {
 			t.Fatalf("bad to square %q: %v", ms[2:4], err)
 		}
 
-		// Find the legal move matching from/to.
 		legal := GenerateLegalMoves(b)
 		var found bool
 		for _, m := range legal {
@@ -77,7 +66,6 @@ func TestZobristIncrementalMatchesFull(t *testing.T) {
 			t.Fatalf("move %s not found in legal moves", ms)
 		}
 
-		// Recompute the hash from scratch and compare.
 		incremental := b.Hash
 		b.ComputeHash()
 		if b.Hash != incremental {
@@ -87,8 +75,6 @@ func TestZobristIncrementalMatchesFull(t *testing.T) {
 	}
 }
 
-// TestZobristDifferentPositions verifies that different positions produce
-// different Zobrist hashes.
 func TestZobristDifferentPositions(t *testing.T) {
 	fens := []string{
 		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -111,19 +97,14 @@ func TestZobristDifferentPositions(t *testing.T) {
 		hashes[b.Hash] = fen
 	}
 }
-
-// TestThreefoldRepetition plays Ng1-f3, Nb8-c6, Nf3-g1, Nc6-b8 twice
-// to reach the starting position 3 times total, then verifies that
-// GetOutcome returns Draw via ThreefoldRepetition.
 func TestThreefoldRepetition(t *testing.T) {
 	b := NewBoard()
 
-	// Each cycle: Nf3 Nc6 Ng1 Nb8 returns to the start position.
 	cycle := [][2]string{
-		{"g1", "f3"}, // Ng1-f3
-		{"b8", "c6"}, // Nb8-c6
-		{"f3", "g1"}, // Nf3-g1
-		{"c6", "b8"}, // Nc6-b8
+		{"g1", "f3"},
+		{"b8", "c6"},
+		{"f3", "g1"},
+		{"c6", "b8"},
 	}
 
 	for rep := 0; rep < 2; rep++ {
@@ -155,12 +136,9 @@ func TestThreefoldRepetition(t *testing.T) {
 	}
 }
 
-// TestNoFalseRepetition plays a few non-repeating moves and confirms no
-// repetition draw is triggered.
 func TestNoFalseRepetition(t *testing.T) {
 	b := NewBoard()
 
-	// Play 1. e4 e5 2. Nf3 Nc6 — no repeated positions.
 	moves := []string{"e2e4", "e7e5", "g1f3", "b8c6"}
 
 	for _, ms := range moves {
