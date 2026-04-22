@@ -258,7 +258,7 @@ func (b *Board) ComputeHash(z *Zobrist) uint64 {
 			//Bitboard of all pieces of type piece and color color
 			bb := b.Pieces[piece] & b.Colors[color]
 
-			if bb != 0 {
+			for bb != 0 {
 				//idx of first piece (0-63) and clear it so we can
 				// move to next bit
 				sq := PopBit(&bb)
