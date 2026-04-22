@@ -182,6 +182,21 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 		}
 	}
 
+	const R = 2
+
+	if depth >= 3 && !IsInCheck(b, b.Turn) {
+		nb := MakeNullMove(b)
+		nullScore := -negamax(nb, depth-1-R, -beta, -beta+1, ply+1, si)
+
+		if si.Stopped() {
+			return 0
+		}
+
+		if nullScore >= beta {
+			return beta
+		}
+	}
+
 	legalMoves := GenerateLegalMoves(b)
 
 	if len(legalMoves) == 0 {

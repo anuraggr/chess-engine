@@ -685,6 +685,26 @@ func MakeMove(b *Board, m Move) *Board {
 	return nb
 }
 
+// MakeNullMove creates a new board state where the turn is simply passed to the opponent.
+func MakeNullMove(b *Board) *Board {
+	nb := b.Copy()
+
+	if nb.Turn == White {
+		nb.Turn = Black
+	} else {
+		nb.Turn = White
+	}
+
+	nb.Hash ^= ZobristTurn
+
+	if nb.EnPassantSquare != -1 {
+		epFile := nb.EnPassantSquare % 8
+		nb.Hash ^= ZobristEnPassant[epFile]
+		nb.EnPassantSquare = -1
+	}
+	return nb
+}
+
 // Game outcome helpers
 type Outcome int
 
