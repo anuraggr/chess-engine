@@ -184,7 +184,9 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 
 	const R = 2
 
-	if depth >= 3 && !IsInCheck(b, b.Turn) {
+	inCheck := IsInCheck(b, b.Turn)
+
+	if depth >= 3 && !inCheck {
 		nb := MakeNullMove(b)
 		nullScore := -negamax(nb, depth-1-R, -beta, -beta+1, ply+1, si)
 
@@ -200,7 +202,7 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 	legalMoves := GenerateLegalMoves(b)
 
 	if len(legalMoves) == 0 {
-		if IsInCheck(b, b.Turn) {
+		if inCheck {
 			return -(MateScore - depth)
 		}
 		return 0
@@ -216,10 +218,34 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 	var bestMove Move
 
 	originalAlpha := alpha
+	movesEvaluated := 0 // move counter for LMR
 
 	for _, m := range legalMoves {
 		nb := MakeMove(b, m)
-		score := -negamax(nb, depth-1, -beta, -alpha, ply+1, si)
+		movesEvaluated++
+		var score int
+		needsFullSearch := true
+
+		isCapture := b.PieceAt(m.To) != NoPiece || m.Flag == FlagEnPassant
+		isPromo := m.Flag == FlagPromotion
+		inCheckPost := IsInCheck(nb, nb.Turn)
+		if depth >= 3 && movesEvaluated > 4 && !isCapture && !isPromo && !inCheck && !inCheckPost {
+
+			reduction := 1
+			if depth > 4 && movesEvaluated > 10 {
+				reduction = 2
+			}
+			score = -negamax(nb, depth-1-reduction, -alpha-1, -alpha, ply+1, si)
+			if score > alpha {
+				needsFullSearch = true
+			} else {
+				needsFullSearch = false
+			}
+		}
+
+		if needsFullSearch {
+			score = -negamax(nb, depth-1, -beta, -alpha, ply+1, si)
+		}
 
 		if si.Stopped() {
 			return 0

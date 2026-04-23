@@ -114,11 +114,43 @@ var pstTable = [7]*[64]int{
 
 var fileMask [8]uint64
 
+var PassedPawnMasks [2][64]uint64
+var PassedPawnBonus = [8]int{0, 10, 20, 35, 60, 100, 170, 0}
+
 func init() {
 	for f := 0; f < 8; f++ {
 		for r := 0; r < 8; r++ {
 			fileMask[f] |= 1 << SquareIndex(f, r)
 		}
+	}
+
+	for sq := 0; sq < 64; sq++ {
+		f := FileOf(sq)
+		r := RankOf(sq)
+
+		var wMask uint64
+		for nr := r + 1; nr <= 7; nr++ {
+			if f > 0 {
+				wMask |= 1 << SquareIndex(f-1, nr)
+			}
+			wMask |= 1 << SquareIndex(f, nr)
+			if f < 7 {
+				wMask |= 1 << SquareIndex(f+1, nr)
+			}
+		}
+		PassedPawnMasks[White][sq] = wMask
+
+		var bMask uint64
+		for nr := r - 1; nr >= 0; nr-- {
+			if f > 0 {
+				bMask |= 1 << SquareIndex(f-1, nr)
+			}
+			bMask |= 1 << SquareIndex(f, nr)
+			if f < 7 {
+				bMask |= 1 << SquareIndex(f+1, nr)
+			}
+		}
+		PassedPawnMasks[Black][sq] = bMask
 	}
 }
 
@@ -269,13 +301,19 @@ func evalPawnStructure(b *Board) int {
 
 	for _, c := range []Color{White, Black} {
 		pawns := b.Pieces[Pawn] & b.Colors[c]
+		oppPawns := b.Pieces[Pawn] & b.Colors[c.Other()]
 		sign := 1
 		if c == Black {
 			sign = -1
 		}
 
 		for f := 0; f < 8; f++ {
-			pawnsOnFile := bits.OnesCount64(pawns & fileMask[f])
+			filePawns := pawns & fileMask[f]
+			if filePawns == 0 {
+				continue
+			}
+
+			pawnsOnFile := bits.OnesCount64(filePawns)
 
 			// doubled pawns
 			if pawnsOnFile > 1 {
@@ -283,17 +321,28 @@ func evalPawnStructure(b *Board) int {
 			}
 
 			// isolated pawns
-			if pawnsOnFile > 0 {
-				hasNeighbor := false
-				if f > 0 && (pawns&fileMask[f-1]) != 0 {
-					hasNeighbor = true
+			hasNeighbor := false
+			if f > 0 && (pawns&fileMask[f-1]) != 0 {
+				hasNeighbor = true
+			}
+			if f < 7 && (pawns&fileMask[f+1]) != 0 {
+				hasNeighbor = true
+			}
+			if !hasNeighbor {
+				score += sign * isolatedPenalty * pawnsOnFile
+			}
+		}
+
+		// passed pawns
+		tmp := pawns
+		for tmp != 0 {
+			sq := PopBit(&tmp)
+			if (oppPawns & PassedPawnMasks[c][sq]) == 0 {
+				rank := RankOf(sq)
+				if c == Black {
+					rank = 7 - rank
 				}
-				if f < 7 && (pawns&fileMask[f+1]) != 0 {
-					hasNeighbor = true
-				}
-				if !hasNeighbor {
-					score += sign * isolatedPenalty * pawnsOnFile
-				}
+				score += sign * PassedPawnBonus[rank]
 			}
 		}
 	}

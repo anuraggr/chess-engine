@@ -6,7 +6,6 @@ func TestEvalStartingPosition(t *testing.T) {
 	b := NewBoard()
 	score := Evaluate(b)
 
-	// Starting position is symmetric, score should be exactly 0
 	if score != 0 {
 		t.Errorf("Starting position eval = %d, want 0", score)
 	} else {
@@ -15,14 +14,12 @@ func TestEvalStartingPosition(t *testing.T) {
 }
 
 func TestEvalWhiteQueenAdvantage(t *testing.T) {
-	// White has an extra queen (black is missing their queen)
 	b, err := BoardFromFEN("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 	if err != nil {
 		t.Fatalf("Failed to parse FEN: %v", err)
 	}
 
 	score := Evaluate(b)
-	// White should be significantly ahead (at least 800 cp with the queen)
 	if score < 800 {
 		t.Errorf("White +Q eval = %d, want >= 800", score)
 	} else {
@@ -31,14 +28,12 @@ func TestEvalWhiteQueenAdvantage(t *testing.T) {
 }
 
 func TestEvalBlackRookAdvantage(t *testing.T) {
-	// Black has an extra rook
 	b, err := BoardFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNr w Qkq - 0 1")
 	if err != nil {
 		t.Fatalf("Failed to parse FEN: %v", err)
 	}
 
 	score := Evaluate(b)
-	// Black should be ahead (so negative score)
 	if score >= 0 {
 		t.Errorf("Black +R eval = %d, want < 0", score)
 	} else {
@@ -47,8 +42,6 @@ func TestEvalBlackRookAdvantage(t *testing.T) {
 }
 
 func TestEvalMaterialOnly(t *testing.T) {
-	// Kings only position should be roughly equal (around zero).
-	// but because of PST and mobility, one side might have a small advantage
 	b, err := BoardFromFEN("8/8/8/8/8/8/8/4K2k w - - 0 1")
 	if err != nil {
 		t.Fatalf("Failed to parse FEN: %v", err)
@@ -59,5 +52,25 @@ func TestEvalMaterialOnly(t *testing.T) {
 		t.Errorf("Kings-only eval = %d, want near 0", score)
 	} else {
 		t.Logf("Kings-only eval = %d ✓", score)
+	}
+}
+
+func TestEvalPassedPawn(t *testing.T) {
+	bPassed, err := BoardFromFEN("k7/p7/8/7P/8/8/8/K7 w - - 0 1")
+	if err != nil {
+		t.Fatalf("Failed to parse FEN: %v", err)
+	}
+	scorePassed := Evaluate(bPassed)
+
+	bBlocked, err := BoardFromFEN("k7/7p/8/7P/8/8/8/K7 w - - 0 1")
+	if err != nil {
+		t.Fatalf("Failed to parse FEN: %v", err)
+	}
+	scoreBlocked := Evaluate(bBlocked)
+
+	if scorePassed <= scoreBlocked {
+		t.Errorf("Expected pawn on h5 to evaluate correctly higher when passed. scorePassed: %d, scoreBlocked: %d", scorePassed, scoreBlocked)
+	} else {
+		t.Logf("Passed pawn evaluated higher than blocked! scorePassed: %d, scoreBlocked: %d ✓", scorePassed, scoreBlocked)
 	}
 }
