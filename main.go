@@ -3,12 +3,40 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 )
 
+func DebugBlunder() {
+	b, _ := BoardFromFEN("6k1/5rp1/1P6/3Q4/5P2/6K1/p5PP/r7 b - - 0 51")
+
+	moves := GenerateLegalMoves(b)
+
+	d := 9
+
+	fmt.Printf("--- DEPTH %d MOVE EVALUATIONS --- \n", d)
+	for _, m := range moves {
+		nb := MakeMove(b, m)
+
+		si := &SearchInfo{MaxDepth: 7, Start: time.Now()}
+		score := -negamax(nb, d, -MateScore, MateScore, 1, si)
+
+		pvString := ""
+		for i := 1; i < si.PVLength[1]; i++ {
+			pvString += si.PVTable[1][i].String() + " "
+		}
+
+		fmt.Printf("Move: %s | Score: %d\n", m.String(), score)
+		fmt.Printf("True PV: %s\n", pvString)
+	}
+	fmt.Println("END")
+}
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--self-play" {
 		selfPlay()
 		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--debug" {
+		DebugBlunder()
 	}
 
 	UCI()
