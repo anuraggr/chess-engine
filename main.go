@@ -15,10 +15,10 @@ func DebugBlunder() {
 
 	fmt.Printf("--- DEPTH %d MOVE EVALUATIONS --- \n", d)
 	for _, m := range moves {
-		nb := MakeMove(b, m)
+		info := MakeMove(b, m)
 
 		si := &SearchInfo{MaxDepth: 7, Start: time.Now()}
-		score := -negamax(nb, d, -MateScore, MateScore, 1, si)
+		score := -negamax(b, d, -MateScore, MateScore, 1, si)
 
 		pvString := ""
 		for i := 1; i < si.PVLength[1]; i++ {
@@ -27,6 +27,7 @@ func DebugBlunder() {
 
 		fmt.Printf("Move: %s | Score: %d\n", m.String(), score)
 		fmt.Printf("True PV: %s\n", pvString)
+		UnmakeMove(b, m, info)
 	}
 	fmt.Println("END")
 }
@@ -37,6 +38,13 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--debug" {
 		DebugBlunder()
+	}
+
+	err := LoadBook("/home/anuragrai/Documents/chess-engine/Titans.bin")
+	if err != nil {
+		fmt.Println("info string Warning: Could not load opening book")
+	} else {
+		fmt.Println("info string Opening book loaded successfully")
 	}
 
 	UCI()
@@ -68,7 +76,7 @@ func selfPlay() {
 			FormatScore(result.Score),
 		)
 
-		board = MakeMove(board, result.BestMove)
+		MakeMove(board, result.BestMove)
 		moveCount++
 	}
 }
