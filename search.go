@@ -9,8 +9,8 @@ import (
 
 const (
 	MaxPly    = 100
-	MateScore = 100000
-	Infinity  = MateScore + 1
+	MateScore = 30000
+	Infinity  = 32000
 )
 
 // searchInfo carries configuration and stop signalling for a search.
@@ -21,8 +21,9 @@ type SearchInfo struct {
 	MoveTime time.Duration // time limit per move (0 = no limit)
 	Start    time.Time     // search started time
 
-	PVTable  [MaxPly][MaxPly]Move
-	PVLength [MaxPly]int
+	MoveLists [MaxPly]MoveList
+	PVTable   [MaxPly][MaxPly]Move
+	PVLength  [MaxPly]int
 }
 
 func (si *SearchInfo) Stopped() bool {
@@ -77,28 +78,30 @@ func scoreMove(b *Board, m Move, ttMove Move) int {
 	return score
 }
 
-func sortMoves(b *Board, moves []Move, ttMove Move) {
-	n := len(moves)
-	scores := make([]int, n)
-	for i, m := range moves {
-		scores[i] = scoreMove(b, m, ttMove)
+func sortMoves(b *Board, ml *MoveList, ttMove Move) {
+	n := ml.Count
+	for i := 0; i < n; i++ {
+		ml.Scores[i] = scoreMove(b, ml.Moves[i], ttMove)
 	}
 	for i := 1; i < n; i++ {
-		key := scores[i]
-		keyMove := moves[i]
+		keyScore := ml.Scores[i]
+		keyMove := ml.Moves[i]
 		j := i - 1
-		for j >= 0 && scores[j] < key {
-			scores[j+1] = scores[j]
-			moves[j+1] = moves[j]
+		for j >= 0 && ml.Scores[j] < keyScore {
+			ml.Scores[j+1] = ml.Scores[j]
+			ml.Moves[j+1] = ml.Moves[j]
 			j--
 		}
-		scores[j+1] = key
-		moves[j+1] = keyMove
+		ml.Scores[j+1] = keyScore
+		ml.Moves[j+1] = keyMove
 	}
 }
 
 // Quiescence search - continue search if pos unstable
-func quiescence(b *Board, alpha, beta int, si *SearchInfo) int {
+func quiescence(b *Board, alpha, beta, ply int, si *SearchInfo) int {
+	if ply >= MaxPly {
+		return Evaluate(b)
+	}
 	si.IncNodes()
 
 	if si.Stopped() {
@@ -117,18 +120,26 @@ func quiescence(b *Board, alpha, beta int, si *SearchInfo) int {
 		alpha = standPat
 	}
 
-	moves := GenerateLegalMoves(b)
-	sortMoves(b, moves, Move{})
+	ml := &si.MoveLists[ply]
+	GeneratePseudoLegalMoves(b, ml)
+	sortMoves(b, ml, Move{})
 
-	for _, m := range moves {
+	for i := 0; i < ml.Count; i++ {
+		m := ml.Moves[i]
 		isCapture := b.PieceAt(m.To) != NoPiece || m.Flag == FlagEnPassant
 		isPromo := m.Flag == FlagPromotion
 		if !isCapture && !isPromo {
 			continue
 		}
 
-		nb := MakeMove(b, m)
-		score := -quiescence(nb, -beta, -alpha, si)
+		info := MakeMove(b, m)
+		if IsInCheck(b, b.Turn.Other()) {
+			UnmakeMove(b, m, info)
+			continue
+		}
+
+		score := -quiescence(b, -beta, -alpha, ply+1, si)
+		UnmakeMove(b, m, info)
 
 		if si.Stopped() {
 			return 0
@@ -187,8 +198,9 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 	inCheck := IsInCheck(b, b.Turn)
 
 	if depth >= 3 && !inCheck {
-		nb := MakeNullMove(b)
-		nullScore := -negamax(nb, depth-1-R, -beta, -beta+1, ply+1, si)
+		info := MakeNullMove(b)
+		nullScore := -negamax(b, depth-1-R, -beta, -beta+1, ply+1, si)
+		UnmakeNullMove(b, info)
 
 		if si.Stopped() {
 			return 0
@@ -199,43 +211,46 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 		}
 	}
 
-	legalMoves := GenerateLegalMoves(b)
-
-	if len(legalMoves) == 0 {
-		if inCheck {
-			return -(MateScore - depth)
-		}
-		return 0
-	}
+	ml := &si.MoveLists[ply]
+	GeneratePseudoLegalMoves(b, ml)
 
 	if depth <= 0 {
-		return quiescence(b, alpha, beta, si)
+		return quiescence(b, alpha, beta, ply, si)
 	}
 
-	sortMoves(b, legalMoves, ttMove)
+	sortMoves(b, ml, ttMove)
 
 	bestScore := -Infinity
 	var bestMove Move
 
 	originalAlpha := alpha
 	movesEvaluated := 0 // move counter for LMR
+	legalMovesCount := 0
 
-	for _, m := range legalMoves {
-		nb := MakeMove(b, m)
+	for i := 0; i < ml.Count; i++ {
+		m := ml.Moves[i]
+		isCapture := b.PieceAt(m.To) != NoPiece || m.Flag == FlagEnPassant
+		isPromo := m.Flag == FlagPromotion
+
+		info := MakeMove(b, m)
+		if IsInCheck(b, b.Turn.Other()) {
+			UnmakeMove(b, m, info)
+			continue
+		}
+		legalMovesCount++
+
 		movesEvaluated++
 		var score int
 		needsFullSearch := true
 
-		isCapture := b.PieceAt(m.To) != NoPiece || m.Flag == FlagEnPassant
-		isPromo := m.Flag == FlagPromotion
-		inCheckPost := IsInCheck(nb, nb.Turn)
+		inCheckPost := IsInCheck(b, b.Turn)
 		if depth >= 3 && movesEvaluated > 4 && !isCapture && !isPromo && !inCheck && !inCheckPost {
 
 			reduction := 1
 			if depth > 4 && movesEvaluated > 10 {
 				reduction = 2
 			}
-			score = -negamax(nb, depth-1-reduction, -alpha-1, -alpha, ply+1, si)
+			score = -negamax(b, depth-1-reduction, -alpha-1, -alpha, ply+1, si)
 			if score > alpha {
 				needsFullSearch = true
 			} else {
@@ -244,8 +259,10 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 		}
 
 		if needsFullSearch {
-			score = -negamax(nb, depth-1, -beta, -alpha, ply+1, si)
+			score = -negamax(b, depth-1, -beta, -alpha, ply+1, si)
 		}
+
+		UnmakeMove(b, m, info)
 
 		if si.Stopped() {
 			return 0
@@ -276,6 +293,13 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 		}
 	}
 
+	if legalMovesCount == 0 {
+		if inCheck {
+			return -(MateScore - depth)
+		}
+		return 0
+	}
+
 	if !si.Stopped() {
 		flag := FlagAlpha // assume we failed low
 		if bestScore >= beta {
@@ -303,8 +327,12 @@ func SearchPosition(b *Board, maxDepth int) SearchResult {
 	return SearchPositionWithInfo(b, si)
 }
 
-// runs an interruptible iterative deepening search.
 func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
+	if bookMove, found := GetBookMove(b); found {
+		fmt.Printf("info depth 1 score cp 0 time 0 pv %s\n", bookMove.String())
+		return SearchResult{BestMove: bookMove, Score: 0, Depth: 1}
+	}
+
 	var best SearchResult
 
 	maxD := si.MaxDepth
@@ -320,14 +348,16 @@ func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
 		alpha := -Infinity
 		beta := Infinity
 
-		legalMoves := GenerateLegalMoves(b)
-		sortMoves(b, legalMoves, best.BestMove)
+		ml := &si.MoveLists[0]
+		GeneratePseudoLegalMoves(b, ml)
+		sortMoves(b, ml, best.BestMove)
 
 		// move ordering
 		// if best.Depth > 0 && best.BestMove.From != best.BestMove.To {
-		// 	for i, m := range legalMoves {
+		// 	for i := 0; i < ml.Count; i++ {
+		// 		m := ml.Moves[i]
 		// 		if m == best.BestMove {
-		// 			legalMoves[0], legalMoves[i] = legalMoves[i], legalMoves[0]
+		// 			ml.Moves[0], ml.Moves[i] = ml.Moves[i], ml.Moves[0]
 		// 			break
 		// 		}
 		// 	}
@@ -339,9 +369,16 @@ func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
 		bestScore := -Infinity
 		var bestMove Move
 
-		for _, m := range legalMoves {
-			nb := MakeMove(b, m)
-			score := -negamax(nb, d-1, -beta, -alpha, 1, si)
+		for i := 0; i < ml.Count; i++ {
+			m := ml.Moves[i]
+			info := MakeMove(b, m)
+			if IsInCheck(b, b.Turn.Other()) {
+				UnmakeMove(b, m, info)
+				continue
+			}
+
+			score := -negamax(b, d-1, -beta, -alpha, 1, si)
+			UnmakeMove(b, m, info)
 
 			if si.Stopped() {
 				break

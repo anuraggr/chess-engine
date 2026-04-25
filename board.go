@@ -110,7 +110,7 @@ type Board struct {
 	HalfMoveClock   int
 	FullMoveNumber  int
 	Hash            uint64
-	History         [101]uint64
+	History         [2048]uint64
 	HistoryLength   int
 	TotalMaterial   int
 }

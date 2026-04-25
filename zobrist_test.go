@@ -57,7 +57,7 @@ func TestZobristIncrementalMatchesFull(t *testing.T) {
 		var found bool
 		for _, m := range legal {
 			if m.From == from && m.To == to {
-				b = MakeMove(b, m)
+				MakeMove(b, m)
 				found = true
 				break
 			}
@@ -116,7 +116,7 @@ func TestThreefoldRepetition(t *testing.T) {
 			var found bool
 			for _, m := range legal {
 				if m.From == from && m.To == to {
-					b = MakeMove(b, m)
+					MakeMove(b, m)
 					found = true
 					break
 				}
@@ -155,7 +155,7 @@ func TestNoFalseRepetition(t *testing.T) {
 		var found bool
 		for _, m := range legal {
 			if m.From == from && m.To == to {
-				b = MakeMove(b, m)
+				MakeMove(b, m)
 				found = true
 				break
 			}

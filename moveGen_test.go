@@ -17,8 +17,9 @@ func perft(b *Board, depth int) int64 {
 
 	var nodes int64
 	for _, m := range moves {
-		nb := MakeMove(b, m)
-		nodes += perft(nb, depth-1)
+		info := MakeMove(b, m)
+		nodes += perft(b, depth-1)
+		UnmakeMove(b, m, info)
 	}
 	return nodes
 }

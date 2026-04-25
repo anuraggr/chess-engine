@@ -151,7 +151,7 @@ func parsePosition(tokens []string) *Board {
 				fmt.Fprintf(os.Stderr, "info string invalid move %s: %v\n", moveStr, err)
 				break
 			}
-			board = MakeMove(board, move)
+			MakeMove(board, move)
 		}
 	}
 

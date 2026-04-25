@@ -14,6 +14,18 @@ const (
 	FlagPromotion            // promotion (check Promotion field)
 )
 
+// pre-allocated slice buffer and length
+type MoveList struct {
+	Moves  [256]Move
+	Scores [256]int
+	Count  int
+}
+
+func (ml *MoveList) Add(m Move) {
+	ml.Moves[ml.Count] = m
+	ml.Count++
+}
+
 // Move
 type Move struct {
 	From      int
@@ -283,17 +295,16 @@ func IsInCheck(b *Board, color Color) bool {
 // Pseudo-legal move generators
 // movinga piece might result in check on ur king. thats a illegal move
 // we filter it out in GenerateLegalMove
-// generate then filter is std pattern because its very fast and only
+// Generate then filter is std pattern because its very fast and only
 // very little moves are illegal
-func appendPromotions(moves []Move, from, to int) []Move {
+func appendPromotions(ml *MoveList, from, to int) {
 	for _, pt := range []PieceType{Queen, Rook, Bishop, Knight} {
-		moves = append(moves, Move{From: from, To: to, Promotion: pt, Flag: FlagPromotion})
+		ml.Add(Move{From: from, To: to, Promotion: pt, Flag: FlagPromotion})
 	}
-	return moves
 }
 
-func GeneratePseudoLegalMoves(b *Board) []Move {
-	moves := make([]Move, 0, 64)
+func GeneratePseudoLegalMoves(b *Board, ml *MoveList) {
+	ml.Count = 0
 	color := b.Turn
 	occupied := b.Colors[White] | b.Colors[Black]
 	empty := ^occupied
@@ -309,9 +320,9 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			to := bits.TrailingZeros64(bb)
 			from := to - 8
 			if to >= 56 {
-				moves = appendPromotions(moves, from, to)
+				appendPromotions(ml, from, to)
 			} else {
-				moves = append(moves, Move{From: from, To: to})
+				ml.Add(Move{From: from, To: to})
 			}
 			bb &= bb - 1
 		}
@@ -321,7 +332,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		for bb != 0 {
 			to := bits.TrailingZeros64(bb)
 			from := to - 16
-			moves = append(moves, Move{From: from, To: to, Flag: FlagDoublePush})
+			ml.Add(Move{From: from, To: to, Flag: FlagDoublePush})
 			bb &= bb - 1
 		}
 		// captures left
@@ -331,9 +342,9 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			to := bits.TrailingZeros64(bb)
 			from := to - 7
 			if to >= 56 {
-				moves = appendPromotions(moves, from, to)
+				appendPromotions(ml, from, to)
 			} else {
-				moves = append(moves, Move{From: from, To: to})
+				ml.Add(Move{From: from, To: to})
 			}
 			bb &= bb - 1
 		}
@@ -344,9 +355,9 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			to := bits.TrailingZeros64(bb)
 			from := to - 9
 			if to >= 56 {
-				moves = appendPromotions(moves, from, to)
+				appendPromotions(ml, from, to)
 			} else {
-				moves = append(moves, Move{From: from, To: to})
+				ml.Add(Move{From: from, To: to})
 			}
 			bb &= bb - 1
 		}
@@ -357,7 +368,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			bb = caps
 			for bb != 0 {
 				from := bits.TrailingZeros64(bb)
-				moves = append(moves, Move{From: from, To: epSq, Flag: FlagEnPassant})
+				ml.Add(Move{From: from, To: epSq, Flag: FlagEnPassant})
 				bb &= bb - 1
 			}
 		}
@@ -369,9 +380,9 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			to := bits.TrailingZeros64(bb)
 			from := to + 8
 			if to <= 7 {
-				moves = appendPromotions(moves, from, to)
+				appendPromotions(ml, from, to)
 			} else {
-				moves = append(moves, Move{From: from, To: to})
+				ml.Add(Move{From: from, To: to})
 			}
 			bb &= bb - 1
 		}
@@ -380,7 +391,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		for bb != 0 {
 			to := bits.TrailingZeros64(bb)
 			from := to + 16
-			moves = append(moves, Move{From: from, To: to, Flag: FlagDoublePush})
+			ml.Add(Move{From: from, To: to, Flag: FlagDoublePush})
 			bb &= bb - 1
 		}
 		capsR := (pawns >> 7) & 0xFEFEFEFEFEFEFEFE & b.Colors[White]
@@ -389,9 +400,9 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			to := bits.TrailingZeros64(bb)
 			from := to + 7
 			if to <= 7 {
-				moves = appendPromotions(moves, from, to)
+				appendPromotions(ml, from, to)
 			} else {
-				moves = append(moves, Move{From: from, To: to})
+				ml.Add(Move{From: from, To: to})
 			}
 			bb &= bb - 1
 		}
@@ -401,9 +412,9 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			to := bits.TrailingZeros64(bb)
 			from := to + 9
 			if to <= 7 {
-				moves = appendPromotions(moves, from, to)
+				appendPromotions(ml, from, to)
 			} else {
-				moves = append(moves, Move{From: from, To: to})
+				ml.Add(Move{From: from, To: to})
 			}
 			bb &= bb - 1
 		}
@@ -413,7 +424,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 			bb = caps
 			for bb != 0 {
 				from := bits.TrailingZeros64(bb)
-				moves = append(moves, Move{From: from, To: epSq, Flag: FlagEnPassant})
+				ml.Add(Move{From: from, To: epSq, Flag: FlagEnPassant})
 				bb &= bb - 1
 			}
 		}
@@ -426,7 +437,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		attacks := KnightAttacks[from] & enemyOrEmpty
 		for attacks != 0 {
 			to := bits.TrailingZeros64(attacks)
-			moves = append(moves, Move{From: from, To: to})
+			ml.Add(Move{From: from, To: to})
 			attacks &= attacks - 1
 		}
 		knights &= knights - 1
@@ -439,7 +450,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		attacks := GetBishopAttacks(from, occupied) & enemyOrEmpty
 		for attacks != 0 {
 			to := bits.TrailingZeros64(attacks)
-			moves = append(moves, Move{From: from, To: to})
+			ml.Add(Move{From: from, To: to})
 			attacks &= attacks - 1
 		}
 		bishops &= bishops - 1
@@ -452,7 +463,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		attacks := GetRookAttacks(from, occupied) & enemyOrEmpty
 		for attacks != 0 {
 			to := bits.TrailingZeros64(attacks)
-			moves = append(moves, Move{From: from, To: to})
+			ml.Add(Move{From: from, To: to})
 			attacks &= attacks - 1
 		}
 		rooks &= rooks - 1
@@ -465,7 +476,7 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		attacks := GetQueenAttacks(from, occupied) & enemyOrEmpty
 		for attacks != 0 {
 			to := bits.TrailingZeros64(attacks)
-			moves = append(moves, Move{From: from, To: to})
+			ml.Add(Move{From: from, To: to})
 			attacks &= attacks - 1
 		}
 		queens &= queens - 1
@@ -478,16 +489,15 @@ func GeneratePseudoLegalMoves(b *Board) []Move {
 		attacks := KingAttacks[from] & enemyOrEmpty
 		for attacks != 0 {
 			to := bits.TrailingZeros64(attacks)
-			moves = append(moves, Move{From: from, To: to})
+			ml.Add(Move{From: from, To: to})
 			attacks &= attacks - 1
 		}
 	}
 
-	moves = generateCastlingMoves(b, moves)
-	return moves
+	generateCastlingMoves(b, ml)
 }
 
-func generateCastlingMoves(b *Board, moves []Move) []Move {
+func generateCastlingMoves(b *Board, ml *MoveList) {
 	color := b.Turn
 	enemy := color.Other()
 	occupied := b.Colors[White] | b.Colors[Black]
@@ -496,14 +506,14 @@ func generateCastlingMoves(b *Board, moves []Move) []Move {
 		if b.CastlingRights&CastleWhiteKing != 0 && HasBit(b.Colors[White]&b.Pieces[Rook], 7) && HasBit(b.Colors[White]&b.Pieces[King], 4) {
 			if !HasBit(occupied, 5) && !HasBit(occupied, 6) {
 				if !isSquareAttacked(b, 4, enemy) && !isSquareAttacked(b, 5, enemy) && !isSquareAttacked(b, 6, enemy) {
-					moves = append(moves, Move{From: 4, To: 6, Flag: FlagCastleKing})
+					ml.Add(Move{From: 4, To: 6, Flag: FlagCastleKing})
 				}
 			}
 		}
 		if b.CastlingRights&CastleWhiteQueen != 0 && HasBit(b.Colors[White]&b.Pieces[Rook], 0) && HasBit(b.Colors[White]&b.Pieces[King], 4) {
 			if !HasBit(occupied, 1) && !HasBit(occupied, 2) && !HasBit(occupied, 3) {
 				if !isSquareAttacked(b, 4, enemy) && !isSquareAttacked(b, 3, enemy) && !isSquareAttacked(b, 2, enemy) {
-					moves = append(moves, Move{From: 4, To: 2, Flag: FlagCastleQueen})
+					ml.Add(Move{From: 4, To: 2, Flag: FlagCastleQueen})
 				}
 			}
 		}
@@ -511,42 +521,55 @@ func generateCastlingMoves(b *Board, moves []Move) []Move {
 		if b.CastlingRights&CastleBlackKing != 0 && HasBit(b.Colors[Black]&b.Pieces[Rook], 63) && HasBit(b.Colors[Black]&b.Pieces[King], 60) {
 			if !HasBit(occupied, 61) && !HasBit(occupied, 62) {
 				if !isSquareAttacked(b, 60, enemy) && !isSquareAttacked(b, 61, enemy) && !isSquareAttacked(b, 62, enemy) {
-					moves = append(moves, Move{From: 60, To: 62, Flag: FlagCastleKing})
+					ml.Add(Move{From: 60, To: 62, Flag: FlagCastleKing})
 				}
 			}
 		}
 		if b.CastlingRights&CastleBlackQueen != 0 && HasBit(b.Colors[Black]&b.Pieces[Rook], 56) && HasBit(b.Colors[Black]&b.Pieces[King], 60) {
 			if !HasBit(occupied, 57) && !HasBit(occupied, 58) && !HasBit(occupied, 59) {
 				if !isSquareAttacked(b, 60, enemy) && !isSquareAttacked(b, 59, enemy) && !isSquareAttacked(b, 58, enemy) {
-					moves = append(moves, Move{From: 60, To: 58, Flag: FlagCastleQueen})
+					ml.Add(Move{From: 60, To: 58, Flag: FlagCastleQueen})
 				}
 			}
 		}
 	}
-	return moves
 }
 
-// GenerateLegalMoves returns only legal moves
-// (filtering out those that leave the king in check).
 func GenerateLegalMoves(b *Board) []Move {
-	pseudos := GeneratePseudoLegalMoves(b)
-	legal := make([]Move, 0, len(pseudos))
-	for _, m := range pseudos {
-		nb := MakeMove(b, m)
-		if !IsInCheck(nb, b.Turn) {
+	var ml MoveList
+	GeneratePseudoLegalMoves(b, &ml)
+	legal := make([]Move, 0, ml.Count)
+	for i := 0; i < ml.Count; i++ {
+		m := ml.Moves[i]
+		info := MakeMove(b, m)
+		if !IsInCheck(b, b.Turn.Other()) {
 			legal = append(legal, m)
 		}
+		UnmakeMove(b, m, info)
 	}
 	return legal
 }
 
-// MakeMove returns a new board with the move applied
-func MakeMove(b *Board, m Move) *Board {
-	nb := b.Copy()
+type UndoInfo struct {
+	Captured        PieceType
+	CastlingRights  uint8
+	EnPassantSquare int8
+	HalfMoveClock   int
+	Hash            uint64
+}
 
-	nb.Hash ^= ZobristCastling[b.CastlingRights]
+func MakeMove(b *Board, m Move) UndoInfo {
+	info := UndoInfo{
+		CastlingRights:  b.CastlingRights,
+		EnPassantSquare: b.EnPassantSquare,
+		HalfMoveClock:   b.HalfMoveClock,
+		Hash:            b.Hash,
+		Captured:        NoPieceType,
+	}
+
+	b.Hash ^= ZobristCastling[b.CastlingRights]
 	if b.hasLegalEnPassantCapture() {
-		nb.Hash ^= ZobristEnPassant[b.EnPassantSquare%8]
+		b.Hash ^= ZobristEnPassant[b.EnPassantSquare%8]
 	}
 
 	pieceColor := b.Turn
@@ -566,92 +589,93 @@ func MakeMove(b *Board, m Move) *Board {
 				break
 			}
 		}
+		info.Captured = capturedType
 	}
 
 	// piece from
-	ClearBit(&nb.Colors[pieceColor], m.From)
-	ClearBit(&nb.Pieces[pieceType], m.From)
-	nb.Hash ^= ZobristPieces[pieceColor][pieceType][m.From]
+	ClearBit(&b.Colors[pieceColor], m.From)
+	ClearBit(&b.Pieces[pieceType], m.From)
+	b.Hash ^= ZobristPieces[pieceColor][pieceType][m.From]
 
 	// captured piece
 	if capturedType != NoPieceType {
-		ClearBit(&nb.Colors[pieceColor.Other()], m.To)
-		ClearBit(&nb.Pieces[capturedType], m.To)
-		nb.Hash ^= ZobristPieces[pieceColor.Other()][capturedType][m.To]
+		ClearBit(&b.Colors[pieceColor.Other()], m.To)
+		ClearBit(&b.Pieces[capturedType], m.To)
+		b.Hash ^= ZobristPieces[pieceColor.Other()][capturedType][m.To]
 		if capturedType >= Knight && capturedType <= Queen {
-			nb.TotalMaterial -= PieceValue[capturedType]
+			b.TotalMaterial -= PieceValue[capturedType]
 		}
 	}
 
 	// piece to
-	SetBit(&nb.Colors[pieceColor], m.To)
-	SetBit(&nb.Pieces[pieceType], m.To)
-	nb.Hash ^= ZobristPieces[pieceColor][pieceType][m.To]
+	SetBit(&b.Colors[pieceColor], m.To)
+	SetBit(&b.Pieces[pieceType], m.To)
+	b.Hash ^= ZobristPieces[pieceColor][pieceType][m.To]
 
 	// En Passant
 	if m.Flag == FlagEnPassant {
 		captureSq := SquareIndex(FileOf(m.To), RankOf(m.From))
-		ClearBit(&nb.Colors[pieceColor.Other()], captureSq)
-		ClearBit(&nb.Pieces[Pawn], captureSq)
-		nb.Hash ^= ZobristPieces[pieceColor.Other()][Pawn][captureSq]
+		ClearBit(&b.Colors[pieceColor.Other()], captureSq)
+		ClearBit(&b.Pieces[Pawn], captureSq)
+		b.Hash ^= ZobristPieces[pieceColor.Other()][Pawn][captureSq]
 	}
 
 	// promotion
 	if m.Flag == FlagPromotion {
-		ClearBit(&nb.Pieces[Pawn], m.To)
-		SetBit(&nb.Pieces[m.Promotion], m.To)
-		nb.Hash ^= ZobristPieces[pieceColor][Pawn][m.To]        //remove promoting pawn
-		nb.Hash ^= ZobristPieces[pieceColor][m.Promotion][m.To] //add promotion piece
-		nb.TotalMaterial += PieceValue[m.Promotion]
+		ClearBit(&b.Pieces[Pawn], m.To)
+		SetBit(&b.Pieces[m.Promotion], m.To)
+		b.Hash ^= ZobristPieces[pieceColor][Pawn][m.To]        //remove promoting pawn
+		b.Hash ^= ZobristPieces[pieceColor][m.Promotion][m.To] //add promotion piece
+		b.TotalMaterial += PieceValue[m.Promotion]
 	}
 
 	// castling
 	if m.Flag == FlagCastleKing {
 		rank := RankOf(m.From)
 		hRook, fRook := SquareIndex(7, rank), SquareIndex(5, rank)
-		ClearBit(&nb.Colors[pieceColor], hRook)
-		ClearBit(&nb.Pieces[Rook], hRook)
-		SetBit(&nb.Colors[pieceColor], fRook)
-		SetBit(&nb.Pieces[Rook], fRook)
-		nb.Hash ^= ZobristPieces[pieceColor][Rook][hRook] //remove ROOk
-		nb.Hash ^= ZobristPieces[pieceColor][Rook][fRook] //add rook
+		ClearBit(&b.Colors[pieceColor], hRook)
+		ClearBit(&b.Pieces[Rook], hRook)
+		SetBit(&b.Colors[pieceColor], fRook)
+		SetBit(&b.Pieces[Rook], fRook)
+		b.Hash ^= ZobristPieces[pieceColor][Rook][hRook] //remove ROOk
+		b.Hash ^= ZobristPieces[pieceColor][Rook][fRook] //add rook
 	}
 	if m.Flag == FlagCastleQueen {
 		rank := RankOf(m.From)
 		aRook, dRook := SquareIndex(0, rank), SquareIndex(3, rank)
-		ClearBit(&nb.Colors[pieceColor], aRook)
-		ClearBit(&nb.Pieces[Rook], aRook)
-		SetBit(&nb.Colors[pieceColor], dRook)
-		SetBit(&nb.Pieces[Rook], dRook)
-		nb.Hash ^= ZobristPieces[pieceColor][Rook][aRook]
-		nb.Hash ^= ZobristPieces[pieceColor][Rook][dRook]
+		ClearBit(&b.Colors[pieceColor], aRook)
+		ClearBit(&b.Pieces[Rook], aRook)
+		SetBit(&b.Colors[pieceColor], dRook)
+		SetBit(&b.Pieces[Rook], dRook)
+		b.Hash ^= ZobristPieces[pieceColor][Rook][aRook]
+		b.Hash ^= ZobristPieces[pieceColor][Rook][dRook]
 	}
 
 	// update en passant square
-	nb.EnPassantSquare = -1
+	b.EnPassantSquare = -1
 	if m.Flag == FlagDoublePush {
 		epRank := (RankOf(m.From) + RankOf(m.To)) / 2
-		nb.EnPassantSquare = int8(SquareIndex(FileOf(m.From), epRank))
+		b.EnPassantSquare = int8(SquareIndex(FileOf(m.From), epRank))
 	}
 
 	// update castling rights
 	if pieceType == King {
 		if pieceColor == White {
-			nb.CastlingRights &^= CastleWhiteKing | CastleWhiteQueen
+			b.CastlingRights &^= CastleWhiteKing | CastleWhiteQueen
 		} else {
-			nb.CastlingRights &^= CastleBlackKing | CastleBlackQueen
+			b.CastlingRights &^= CastleBlackKing | CastleBlackQueen
 		}
 	}
 	updateCastlingForRook := func(sq int) {
 		switch sq {
 		case SquareIndex(0, 0):
-			nb.CastlingRights &^= CastleWhiteQueen
+			b.CastlingRights &^= CastleWhiteQueen
 		case SquareIndex(7, 0):
-			nb.CastlingRights &^= CastleWhiteKing
+			b.CastlingRights &^= CastleWhiteKing
 		case SquareIndex(0, 7):
-			nb.CastlingRights &^= CastleBlackQueen
+			b.CastlingRights &^= CastleBlackQueen
 		case SquareIndex(7, 7):
-			nb.CastlingRights &^= CastleBlackKing
+			b.CastlingRights &^= CastleBlackKing
 		}
 	}
 	if pieceType == Rook {
@@ -663,46 +687,135 @@ func MakeMove(b *Board, m Move) *Board {
 
 	// update clocks
 	if pieceType == Pawn || capturedType != NoPieceType || m.Flag == FlagEnPassant {
-		nb.HalfMoveClock = 0
-		nb.HistoryLength = 0
+		b.HalfMoveClock = 0
 	} else {
-		nb.HalfMoveClock++
-		nb.History[nb.HistoryLength] = b.Hash
-		nb.HistoryLength++
+		b.HalfMoveClock++
 	}
+	b.History[b.HistoryLength] = info.Hash
+	b.HistoryLength++
+
 	if b.Turn == Black {
-		nb.FullMoveNumber++
+		b.FullMoveNumber++
 	}
 
-	nb.Turn = b.Turn.Other()
-	nb.Hash ^= ZobristTurn
+	b.Turn = b.Turn.Other()
+	b.Hash ^= ZobristTurn
 
-	nb.Hash ^= ZobristCastling[nb.CastlingRights]
-	if nb.hasLegalEnPassantCapture() {
-		nb.Hash ^= ZobristEnPassant[nb.EnPassantSquare%8]
+	b.Hash ^= ZobristCastling[b.CastlingRights]
+	if b.hasLegalEnPassantCapture() {
+		b.Hash ^= ZobristEnPassant[b.EnPassantSquare%8]
 	}
 
-	return nb
+	return info
 }
 
-// MakeNullMove creates a new board state where the turn is simply passed to the opponent.
-func MakeNullMove(b *Board) *Board {
-	nb := b.Copy()
+func UnmakeMove(b *Board, m Move, info UndoInfo) {
+	b.Turn = b.Turn.Other()
+	pieceColor := b.Turn
 
-	if nb.Turn == White {
-		nb.Turn = Black
+	var pieceType PieceType
+	if m.Flag == FlagPromotion {
+		pieceType = Pawn
 	} else {
-		nb.Turn = White
+		for pt := Pawn; pt <= King; pt++ {
+			if HasBit(b.Pieces[pt], m.To) {
+				pieceType = pt
+				break
+			}
+		}
 	}
 
-	nb.Hash ^= ZobristTurn
-
-	if nb.EnPassantSquare != -1 {
-		epFile := nb.EnPassantSquare % 8
-		nb.Hash ^= ZobristEnPassant[epFile]
-		nb.EnPassantSquare = -1
+	if m.Flag == FlagPromotion {
+		ClearBit(&b.Colors[pieceColor], m.To)
+		ClearBit(&b.Pieces[m.Promotion], m.To)
+		SetBit(&b.Colors[pieceColor], m.From)
+		SetBit(&b.Pieces[Pawn], m.From)
+		b.TotalMaterial -= PieceValue[m.Promotion]
+	} else {
+		ClearBit(&b.Colors[pieceColor], m.To)
+		ClearBit(&b.Pieces[pieceType], m.To)
+		SetBit(&b.Colors[pieceColor], m.From)
+		SetBit(&b.Pieces[pieceType], m.From)
 	}
-	return nb
+
+	if info.Captured != NoPieceType {
+		SetBit(&b.Colors[pieceColor.Other()], m.To)
+		SetBit(&b.Pieces[info.Captured], m.To)
+		if info.Captured >= Knight && info.Captured <= Queen {
+			b.TotalMaterial += PieceValue[info.Captured]
+		}
+	}
+
+	if m.Flag == FlagEnPassant {
+		captureSq := SquareIndex(FileOf(m.To), RankOf(m.From))
+		SetBit(&b.Colors[pieceColor.Other()], captureSq)
+		SetBit(&b.Pieces[Pawn], captureSq)
+	}
+
+	if m.Flag == FlagCastleKing {
+		rank := RankOf(m.From)
+		hRook, fRook := SquareIndex(7, rank), SquareIndex(5, rank)
+		ClearBit(&b.Colors[pieceColor], fRook)
+		ClearBit(&b.Pieces[Rook], fRook)
+		SetBit(&b.Colors[pieceColor], hRook)
+		SetBit(&b.Pieces[Rook], hRook)
+	} else if m.Flag == FlagCastleQueen {
+		rank := RankOf(m.From)
+		aRook, dRook := SquareIndex(0, rank), SquareIndex(3, rank)
+		ClearBit(&b.Colors[pieceColor], dRook)
+		ClearBit(&b.Pieces[Rook], dRook)
+		SetBit(&b.Colors[pieceColor], aRook)
+		SetBit(&b.Pieces[Rook], aRook)
+	}
+
+	b.CastlingRights = info.CastlingRights
+	b.EnPassantSquare = info.EnPassantSquare
+	b.HalfMoveClock = info.HalfMoveClock
+	b.Hash = info.Hash
+
+	if b.Turn == Black {
+		b.FullMoveNumber--
+	}
+	b.HistoryLength--
+}
+
+func MakeNullMove(b *Board) UndoInfo {
+	info := UndoInfo{
+		CastlingRights:  b.CastlingRights,
+		EnPassantSquare: b.EnPassantSquare,
+		HalfMoveClock:   b.HalfMoveClock,
+		Hash:            b.Hash,
+		Captured:        NoPieceType,
+	}
+
+	if b.Turn == White {
+		b.Turn = Black
+	} else {
+		b.Turn = White
+	}
+
+	b.Hash ^= ZobristTurn
+
+	if b.EnPassantSquare != -1 {
+		epFile := b.EnPassantSquare % 8
+		b.Hash ^= ZobristEnPassant[epFile]
+		b.EnPassantSquare = -1
+	}
+
+	b.History[b.HistoryLength] = info.Hash
+	b.HistoryLength++
+	b.HalfMoveClock++
+
+	return info
+}
+
+func UnmakeNullMove(b *Board, info UndoInfo) {
+	b.Turn = b.Turn.Other()
+	b.EnPassantSquare = info.EnPassantSquare
+	b.CastlingRights = info.CastlingRights
+	b.HalfMoveClock = info.HalfMoveClock
+	b.Hash = info.Hash
+	b.HistoryLength--
 }
 
 // Game outcome helpers
@@ -810,7 +923,12 @@ func isInsufficientMaterial(b *Board) bool {
 func isRepetition(b *Board) bool {
 	repetitionCount := 1
 
-	for i := b.HistoryLength - 2; i >= 0; i -= 2 {
+	limit := b.HistoryLength - b.HalfMoveClock
+	if limit < 0 {
+		limit = 0
+	}
+
+	for i := b.HistoryLength - 2; i >= limit; i -= 2 {
 		if b.History[i] == b.Hash {
 			repetitionCount++
 			if repetitionCount >= 3 {
