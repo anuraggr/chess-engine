@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +42,7 @@ func UCI() {
 			fmt.Println("option name Move Overhead type spin default 500 min 0 max 10000")
 			fmt.Println("option name Threads type spin default 1 min 1 max 128")
 			fmt.Println("option name Hash type spin default 16 min 1 max 1024")
+			fmt.Println("option name Ponder type check default true")
 			fmt.Println("option name SyzygyPath type string default <empty>")
 			fmt.Println("option name UCI_ShowWDL type check default false")
 
@@ -71,6 +73,11 @@ func UCI() {
 		case "stop":
 			if currentSearch != nil {
 				currentSearch.Stop()
+			}
+
+		case "ponderhit":
+			if currentSearch != nil {
+				currentSearch.PonderHit()
 			}
 
 		case "quit":
@@ -214,6 +221,8 @@ func parseGo(tokens []string, si *SearchInfo, board *Board, wg *sync.WaitGroup) 
 			}
 		case "infinite":
 			infinite = true
+		case "ponder":
+			// handled below after time allocation
 		}
 	}
 
@@ -255,12 +264,27 @@ func parseGo(tokens []string, si *SearchInfo, board *Board, wg *sync.WaitGroup) 
 		si.MaxDepth = 6
 	}
 
-	// run search in a goroutine so we can receive "stop" while searching
+	// check if this is a ponder search
+	isPonder := false
+	for _, t := range tokens {
+		if t == "ponder" {
+			isPonder = true
+			break
+		}
+	}
+	if isPonder {
+		atomic.StoreInt32(&si.Pondering, 1)
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		result := SearchPositionWithInfo(board, si)
-		fmt.Printf("bestmove %s\n", result.BestMove)
+		if result.PonderMove != (Move{}) {
+			fmt.Printf("bestmove %s ponder %s\n", result.BestMove, result.PonderMove)
+		} else {
+			fmt.Printf("bestmove %s\n", result.BestMove)
+		}
 	}()
 }
 

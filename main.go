@@ -11,7 +11,7 @@ func DebugBlunder() {
 
 	moves := GenerateLegalMoves(b)
 
-	d := 9
+	d := 15
 
 	fmt.Printf("--- DEPTH %d MOVE EVALUATIONS --- \n", d)
 	for _, m := range moves {

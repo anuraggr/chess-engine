@@ -886,7 +886,7 @@ func GetOutcome(b *Board) (Outcome, Method) {
 		return Draw, FiftyMoveRule
 	}
 
-	if isRepetition(b) {
+	if isThreefoldRepetition(b) {
 		return Draw, ThreefoldRepetition
 	}
 
@@ -920,7 +920,27 @@ func isInsufficientMaterial(b *Board) bool {
 	return false
 }
 
-func isRepetition(b *Board) bool {
+// isRepetitionForSearch returns true if the current position has appeared
+// at least once before. Used inside negamax so the engine treats any
+// repetition as a draw and avoids shuffling into threefold when winning.
+func isRepetitionForSearch(b *Board) bool {
+	limit := b.HistoryLength - b.HalfMoveClock
+	if limit < 0 {
+		limit = 0
+	}
+
+	for i := b.HistoryLength - 2; i >= limit; i -= 2 {
+		if b.History[i] == b.Hash {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isThreefoldRepetition requires 3 occurrences. Used only for
+// official game-over adjudication in GetOutcome().
+func isThreefoldRepetition(b *Board) bool {
 	repetitionCount := 1
 
 	limit := b.HistoryLength - b.HalfMoveClock

@@ -15,11 +15,12 @@ const (
 
 // searchInfo carries configuration and stop signalling for a search.
 type SearchInfo struct {
-	Nodes    int64         // node counter
-	StopFlag int32         // set to 1 to abort
-	MaxDepth int           // depth limit (0 = no limit)
-	MoveTime time.Duration // time limit per move (0 = no limit)
-	Start    time.Time     // search started time
+	Nodes     int64         // node counter
+	StopFlag  int32         // set to 1 to abort
+	Pondering int32         // 1 while pondering (suppress time limit)
+	MaxDepth  int           // depth limit (0 = no limit)
+	MoveTime  time.Duration // time limit per move (0 = no limit)
+	Start     time.Time     // search started time
 
 	MoveLists [MaxPly]MoveList
 	PVTable   [MaxPly][MaxPly]Move
@@ -39,9 +40,19 @@ func (si *SearchInfo) IncNodes() {
 }
 
 func (si *SearchInfo) CheckTimeLimit() {
+	if atomic.LoadInt32(&si.Pondering) != 0 {
+		return // don't enforce time while pondering
+	}
 	if si.MoveTime > 0 && time.Since(si.Start) >= si.MoveTime {
 		si.Stop()
 	}
+}
+
+// ponderhit transitions from pondering to real search.
+// it resets the clock so allocated time begins from ponderhit moment.
+func (si *SearchInfo) PonderHit() {
+	atomic.StoreInt32(&si.Pondering, 0)
+	si.Start = time.Now()
 }
 
 // move ordering to score moves for better pruning
@@ -172,7 +183,7 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 		return 0
 	}
 
-	if b.HalfMoveClock >= 100 || isInsufficientMaterial(b) || isRepetition(b) {
+	if b.HalfMoveClock >= 100 || isInsufficientMaterial(b) || isRepetitionForSearch(b) {
 		return 0
 	}
 
@@ -316,9 +327,10 @@ func negamax(b *Board, depth, alpha, beta, ply int, si *SearchInfo) int {
 
 // SearchPosition with iterative deepening
 type SearchResult struct {
-	BestMove Move
-	Score    int
-	Depth    int
+	BestMove   Move
+	PonderMove Move // predicted opponent response (zero if unavailable)
+	Score      int
+	Depth      int
 }
 
 // defaults (no stop, depth limit only).
@@ -405,6 +417,13 @@ func SearchPositionWithInfo(b *Board, si *SearchInfo) SearchResult {
 		// we only update best if we completed this depth without being stopped
 		if !si.Stopped() {
 			best = SearchResult{BestMove: bestMove, Score: bestScore, Depth: d}
+
+			// extract ponder move from PV if available
+			if si.PVLength[0] >= 2 {
+				best.PonderMove = si.PVTable[0][1]
+			} else {
+				best.PonderMove = Move{} // no ponder move (mate in 1, etc))
+			}
 
 			//store root evaluation in TT to make it seen by ExtractPV
 			TT.Store(b.Hash, uint8(d), int16(bestScore), FlagExact, bestMove)
